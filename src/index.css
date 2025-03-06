@@ -1,0 +1,124 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-black text-white;
+  }
+}
+
+@layer utilities {
+  .animate-text-reveal {
+    animation: text-reveal 0.5s cubic-bezier(0.77, 0, 0.175, 1) forwards;
+  }
+}
+
+@keyframes text-reveal {
+  0% {
+    transform: translateY(100%);
+    opacity: 0;
+  }
+  100% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+/* Glass effect */
+.glass {
+  background: rgba(15, 15, 20, 0.6);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* Prose styles for email content */
+.prose {
+  @apply text-gray-800;
+}
+
+.prose h1, .prose h2, .prose h3, .prose h4, .prose h5, .prose h6 {
+  @apply font-bold text-gray-900 my-4;
+}
+
+.prose h1 {
+  @apply text-2xl;
+}
+
+.prose h2 {
+  @apply text-xl;
+}
+
+.prose h3 {
+  @apply text-lg;
+}
+
+.prose p {
+  @apply my-3;
+}
+
+.prose a {
+  @apply text-blue-600 hover:underline;
+}
+
+.prose ul, .prose ol {
+  @apply my-3 pl-6;
+}
+
+.prose ul {
+  @apply list-disc;
+}
+
+.prose ol {
+  @apply list-decimal;
+}
+
+.prose blockquote {
+  @apply border-l-4 border-gray-300 pl-4 italic my-4;
+}
+
+.prose img {
+  @apply max-w-full my-4;
+}
+
+.prose pre {
+  @apply bg-gray-100 p-4 rounded my-4 overflow-x-auto;
+}
+
+.prose code {
+  @apply bg-gray-100 px-1 py-0.5 rounded text-sm;
+}
+
+/* Mobile-specific prose styles */
+.prose-sm h1 {
+  @apply text-xl;
+}
+
+.prose-sm h2 {
+  @apply text-lg;
+}
+
+.prose-sm h3 {
+  @apply text-base;
+}
+
+.prose-sm p, .prose-sm ul, .prose-sm ol {
+  @apply my-2 text-sm;
+}
+
+.prose-sm pre {
+  @apply p-2 text-xs;
+}
+
+.prose-sm code {
+  @apply text-xs;
+}
+
+.prose-sm blockquote {
+  @apply pl-3 my-2;
+}
+
+.prose-sm img {
+  @apply my-2;
+}
