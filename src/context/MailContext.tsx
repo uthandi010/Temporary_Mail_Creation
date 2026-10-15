@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { Account, Message, MessageDetails, createAccount, getMessages, getMessageDetails, deleteMessage, getDomains } from '../services/mailApi';
+import { Account, Message, MessageDetails, createAccount, deleteAccount, getMessages, getMessageDetails, deleteMessage, getDomains } from '../services/mailApi';
 
 interface MailContextType {
   account: Account | null;
@@ -12,27 +12,54 @@ interface MailContextType {
   refreshMessages: () => Promise<void>;
   selectMessage: (messageId: string) => Promise<void>;
   removeMessage: (messageId: string) => Promise<void>;
+  logout: () => void;
+  deleteCurrentAccount: () => Promise<void>;
   copyToClipboard: (text: string) => void;
   generateRandomUsername: () => string;
 }
 
+// Only the token and address are kept (never the password), and only for this tab session.
+const SESSION_KEY = 'tempMailSession';
+const LEGACY_STORAGE_KEY = 'tempMailAccount';
+
+const loadSession = (): Account | null => {
+  try {
+    // Older versions stored the plaintext password in localStorage; remove it.
+    localStorage.removeItem(LEGACY_STORAGE_KEY);
+    const saved = sessionStorage.getItem(SESSION_KEY);
+    if (!saved) return null;
+    const { id, address, token } = JSON.parse(saved);
+    return id && address && token ? { id, address, token } : null;
+  } catch {
+    return null;
+  }
+};
+
+const saveSession = (account: Account | null) => {
+  try {
+    if (account) {
+      const { id, address, token } = account;
+      sessionStorage.setItem(SESSION_KEY, JSON.stringify({ id, address, token }));
+    } else {
+      sessionStorage.removeItem(SESSION_KEY);
+    }
+  } catch {
+    // Storage unavailable; the session simply won't survive a reload.
+  }
+};
+
 const MailContext = createContext<MailContextType | undefined>(undefined);
 
 export const MailProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [account, setAccount] = useState<Account | null>(null);
+  const [account, setAccount] = useState<Account | null>(loadSession);
   const [messages, setMessages] = useState<Message[]>([]);
   const [selectedMessage, setSelectedMessage] = useState<MessageDetails | null>(null);
   const [domains, setDomains] = useState<string[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Load account from localStorage on initial render
+  // Fetch domains on initial render
   useEffect(() => {
-    const savedAccount = localStorage.getItem('tempMailAccount');
-    if (savedAccount) {
-      setAccount(JSON.parse(savedAccount));
-    }
-    
     // Fetch available domains
     fetchDomains();
   }, []);
@@ -72,7 +99,7 @@ export const MailProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const newAccount = await createAccount(emailAddress, password);
       
       setAccount(newAccount);
-      localStorage.setItem('tempMailAccount', JSON.stringify(newAccount));
+      saveSession(newAccount);
       
       setLoading(false);
     } catch (err: any) {
@@ -126,6 +153,28 @@ export const MailProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const logout = () => {
+    saveSession(null);
+    setAccount(null);
+    setMessages([]);
+    setSelectedMessage(null);
+    setError(null);
+  };
+
+  const deleteCurrentAccount = async () => {
+    if (!account) return;
+
+    try {
+      setLoading(true);
+      await deleteAccount(account.token, account.id);
+      logout();
+    } catch {
+      setError('Failed to delete account');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text)
       .then(() => {
@@ -160,6 +209,8 @@ export const MailProvider: React.FC<{ children: React.ReactNode }> = ({ children
         refreshMessages,
         selectMessage,
         removeMessage,
+        logout,
+        deleteCurrentAccount,
         copyToClipboard,
         generateRandomUsername,
       }}
