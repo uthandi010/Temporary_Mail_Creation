@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import axios from 'axios';
 import { Account, Message, MessageDetails, createAccount, deleteAccount, getMessages, getMessageDetails, deleteMessage, getDomains } from '../services/mailApi';
 
 interface MailContextType {
@@ -6,7 +7,10 @@ interface MailContextType {
   messages: Message[];
   selectedMessage: MessageDetails | null;
   domains: string[];
+  /** Foreground work: initial load, creating an account, opening or deleting. */
   loading: boolean;
+  /** True only during a manual refresh; background polling is silent. */
+  refreshing: boolean;
   error: string | null;
   createNewAccount: (username: string, domain: string, password: string) => Promise<void>;
   refreshMessages: () => Promise<void>;
@@ -48,6 +52,9 @@ const saveSession = (account: Account | null) => {
   }
 };
 
+const POLL_INTERVAL_MS = 10000;
+const MAX_BACKOFF_MS = 120000;
+
 const MailContext = createContext<MailContextType | undefined>(undefined);
 
 export const MailProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -56,35 +63,61 @@ export const MailProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [selectedMessage, setSelectedMessage] = useState<MessageDetails | null>(null);
   const [domains, setDomains] = useState<string[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
+  const [refreshing, setRefreshing] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
   // Fetch domains on initial render
   useEffect(() => {
-    // Fetch available domains
     fetchDomains();
   }, []);
 
-  // Fetch messages when account changes
+  // Load messages when the session changes, then poll silently. The effect only
+  // depends on the token and keeps its own backoff state, so it never reads stale values.
+  const token = account?.token;
   useEffect(() => {
-    if (account) {
-      refreshMessages();
-      
-      // Set up polling for new messages every 10 seconds
-      const interval = setInterval(() => {
-        refreshMessages();
-      }, 10000);
-      
-      return () => clearInterval(interval);
-    }
-  }, [account]);
+    if (!token) return;
+
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let delay = POLL_INTERVAL_MS;
+
+    const poll = async (initial: boolean) => {
+      if (initial) setLoading(true);
+      try {
+        const fetched = await getMessages(token);
+        if (cancelled) return;
+        setMessages(fetched);
+        setError(null);
+        delay = POLL_INTERVAL_MS;
+      } catch (err) {
+        if (cancelled) return;
+        if (axios.isAxiosError(err) && err.response?.status === 429) {
+          // Rate limited: back off exponentially instead of hammering the API.
+          delay = Math.min(delay * 2, MAX_BACKOFF_MS);
+        } else {
+          setError('Failed to fetch messages');
+        }
+      } finally {
+        if (initial && !cancelled) setLoading(false);
+      }
+      if (!cancelled) timer = setTimeout(() => poll(false), delay);
+    };
+
+    poll(true);
+
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [token]);
 
   const fetchDomains = async () => {
     try {
       setLoading(true);
       const domainsData = await getDomains();
-      setDomains(domainsData.map((domain: any) => domain.domain));
+      setDomains(domainsData.map((domain: { domain: string }) => domain.domain));
       setLoading(false);
-    } catch (err) {
+    } catch {
       setError('Failed to fetch domains');
       setLoading(false);
     }
@@ -102,23 +135,25 @@ export const MailProvider: React.FC<{ children: React.ReactNode }> = ({ children
       saveSession(newAccount);
       
       setLoading(false);
-    } catch (err: any) {
-      setError(err.response?.data?.['hydra:description'] || 'Failed to create account');
+    } catch (err) {
+      const description = axios.isAxiosError(err) ? err.response?.data?.['hydra:description'] : undefined;
+      setError(description || 'Failed to create account');
       setLoading(false);
     }
   };
 
   const refreshMessages = async () => {
     if (!account) return;
-    
+
     try {
-      setLoading(true);
+      setRefreshing(true);
       const fetchedMessages = await getMessages(account.token);
       setMessages(fetchedMessages);
-      setLoading(false);
-    } catch (err) {
+      setError(null);
+    } catch {
       setError('Failed to fetch messages');
-      setLoading(false);
+    } finally {
+      setRefreshing(false);
     }
   };
 
@@ -129,8 +164,9 @@ export const MailProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setLoading(true);
       const details = await getMessageDetails(account.token, messageId);
       setSelectedMessage(details);
+      setError(null);
       setLoading(false);
-    } catch (err) {
+    } catch {
       setError('Failed to fetch message details');
       setLoading(false);
     }
@@ -142,12 +178,13 @@ export const MailProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       setLoading(true);
       await deleteMessage(account.token, messageId);
-      setMessages(messages.filter(msg => msg.id !== messageId));
+      setMessages(prev => prev.filter(msg => msg.id !== messageId));
       if (selectedMessage?.id === messageId) {
         setSelectedMessage(null);
       }
+      setError(null);
       setLoading(false);
-    } catch (err) {
+    } catch {
       setError('Failed to delete message');
       setLoading(false);
     }
@@ -180,7 +217,7 @@ export const MailProvider: React.FC<{ children: React.ReactNode }> = ({ children
       .then(() => {
         // Could add a toast notification here
       })
-      .catch(err => {
+      .catch(() => {
         setError('Failed to copy to clipboard');
       });
   };
@@ -204,6 +241,7 @@ export const MailProvider: React.FC<{ children: React.ReactNode }> = ({ children
         selectedMessage,
         domains,
         loading,
+        refreshing,
         error,
         createNewAccount,
         refreshMessages,

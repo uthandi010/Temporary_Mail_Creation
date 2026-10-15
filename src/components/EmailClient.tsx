@@ -13,7 +13,8 @@ const EmailClient: React.FC = () => {
     account, 
     messages, 
     selectedMessage, 
-    loading, 
+    loading,
+    refreshing,
     refreshMessages, 
     selectMessage, 
     removeMessage,
@@ -89,12 +90,12 @@ const EmailClient: React.FC = () => {
             <div className="flex items-center gap-2 mt-2 sm:mt-0">
               <button
                 onClick={handleRefresh}
-                disabled={loading}
+                disabled={refreshing}
                 className="bg-zinc-800 hover:bg-zinc-700 text-white p-1.5 sm:p-2 rounded-lg transition-colors"
                 title="Refresh inbox"
               >
-                <RefreshCw size={16} className={`sm:hidden ${loading ? 'animate-spin' : ''}`} />
-                <RefreshCw size={18} className={`hidden sm:block ${loading ? 'animate-spin' : ''}`} />
+                <RefreshCw size={16} className={`sm:hidden ${refreshing ? 'animate-spin' : ''}`} />
+                <RefreshCw size={18} className={`hidden sm:block ${refreshing ? 'animate-spin' : ''}`} />
               </button>
               
               <button
