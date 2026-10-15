@@ -29,6 +29,7 @@ npm run dev
 | `npm run preview`   | Preview the production build          |
 | `npm run lint`      | Run ESLint                            |
 | `npm run typecheck` | Run the TypeScript compiler (no emit) |
+| `npm test`          | Run the Vitest suite                  |
 
 ## Privacy notes
 
