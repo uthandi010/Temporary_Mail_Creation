@@ -1,63 +1,135 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
-import { Account, Message, MessageDetails, createAccount, getMessages, getMessageDetails, deleteMessage, getDomains } from '../services/mailApi';
+import React, { createContext, useCallback, useContext, useState, useEffect } from 'react';
+import axios from 'axios';
+import Toast, { ToastData } from '../components/Toast';
+import { Account, Message, MessageDetails, createAccount, deleteAccount, getMessages, getMessageDetails, deleteMessage, getDomains } from '../services/mailApi';
 
 interface MailContextType {
   account: Account | null;
   messages: Message[];
   selectedMessage: MessageDetails | null;
   domains: string[];
+  /** Foreground work: initial load, creating an account, opening or deleting. */
   loading: boolean;
+  /** True only during a manual refresh; background polling is silent. */
+  refreshing: boolean;
   error: string | null;
   createNewAccount: (username: string, domain: string, password: string) => Promise<void>;
   refreshMessages: () => Promise<void>;
   selectMessage: (messageId: string) => Promise<void>;
   removeMessage: (messageId: string) => Promise<void>;
+  logout: () => void;
+  deleteCurrentAccount: () => Promise<void>;
   copyToClipboard: (text: string) => void;
   generateRandomUsername: () => string;
 }
 
+// Only the token and address are kept (never the password), and only for this tab session.
+const SESSION_KEY = 'tempMailSession';
+const LEGACY_STORAGE_KEY = 'tempMailAccount';
+
+const loadSession = (): Account | null => {
+  try {
+    // Older versions stored the plaintext password in localStorage; remove it.
+    localStorage.removeItem(LEGACY_STORAGE_KEY);
+    const saved = sessionStorage.getItem(SESSION_KEY);
+    if (!saved) return null;
+    const { id, address, token } = JSON.parse(saved);
+    return id && address && token ? { id, address, token } : null;
+  } catch {
+    return null;
+  }
+};
+
+const saveSession = (account: Account | null) => {
+  try {
+    if (account) {
+      const { id, address, token } = account;
+      sessionStorage.setItem(SESSION_KEY, JSON.stringify({ id, address, token }));
+    } else {
+      sessionStorage.removeItem(SESSION_KEY);
+    }
+  } catch {
+    // Storage unavailable; the session simply won't survive a reload.
+  }
+};
+
+const POLL_INTERVAL_MS = 10000;
+const MAX_BACKOFF_MS = 120000;
+
 const MailContext = createContext<MailContextType | undefined>(undefined);
 
 export const MailProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [account, setAccount] = useState<Account | null>(null);
+  const [account, setAccount] = useState<Account | null>(loadSession);
   const [messages, setMessages] = useState<Message[]>([]);
   const [selectedMessage, setSelectedMessage] = useState<MessageDetails | null>(null);
   const [domains, setDomains] = useState<string[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
+  const [refreshing, setRefreshing] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const [toast, setToast] = useState<ToastData | null>(null);
 
-  // Load account from localStorage on initial render
+  const showToast = useCallback((message: string, type: ToastData['type'] = 'success') => {
+    setToast({ id: Date.now(), message, type });
+  }, []);
+  const dismissToast = useCallback(() => setToast(null), []);
+
+  // Once signed in there is no inline error area, so surface errors as a toast.
   useEffect(() => {
-    const savedAccount = localStorage.getItem('tempMailAccount');
-    if (savedAccount) {
-      setAccount(JSON.parse(savedAccount));
-    }
-    
-    // Fetch available domains
+    if (error && account) showToast(error, 'error');
+  }, [error, account, showToast]);
+
+  // Fetch domains on initial render
+  useEffect(() => {
     fetchDomains();
   }, []);
 
-  // Fetch messages when account changes
+  // Load messages when the session changes, then poll silently. The effect only
+  // depends on the token and keeps its own backoff state, so it never reads stale values.
+  const token = account?.token;
   useEffect(() => {
-    if (account) {
-      refreshMessages();
-      
-      // Set up polling for new messages every 10 seconds
-      const interval = setInterval(() => {
-        refreshMessages();
-      }, 10000);
-      
-      return () => clearInterval(interval);
-    }
-  }, [account]);
+    if (!token) return;
+
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let delay = POLL_INTERVAL_MS;
+
+    const poll = async (initial: boolean) => {
+      if (initial) setLoading(true);
+      try {
+        const fetched = await getMessages(token);
+        if (cancelled) return;
+        setMessages(fetched);
+        setError(null);
+        delay = POLL_INTERVAL_MS;
+      } catch (err) {
+        if (cancelled) return;
+        if (axios.isAxiosError(err) && err.response?.status === 429) {
+          // Rate limited: back off exponentially instead of hammering the API.
+          delay = Math.min(delay * 2, MAX_BACKOFF_MS);
+        } else {
+          setError('Failed to fetch messages');
+        }
+      } finally {
+        if (initial && !cancelled) setLoading(false);
+      }
+      if (!cancelled) timer = setTimeout(() => poll(false), delay);
+    };
+
+    poll(true);
+
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [token]);
 
   const fetchDomains = async () => {
     try {
       setLoading(true);
       const domainsData = await getDomains();
-      setDomains(domainsData.map((domain: any) => domain.domain));
+      setDomains(domainsData.map((domain: { domain: string }) => domain.domain));
       setLoading(false);
-    } catch (err) {
+    } catch {
       setError('Failed to fetch domains');
       setLoading(false);
     }
@@ -72,26 +144,28 @@ export const MailProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const newAccount = await createAccount(emailAddress, password);
       
       setAccount(newAccount);
-      localStorage.setItem('tempMailAccount', JSON.stringify(newAccount));
+      saveSession(newAccount);
       
       setLoading(false);
-    } catch (err: any) {
-      setError(err.response?.data?.['hydra:description'] || 'Failed to create account');
+    } catch (err) {
+      const description = axios.isAxiosError(err) ? err.response?.data?.['hydra:description'] : undefined;
+      setError(description || 'Failed to create account');
       setLoading(false);
     }
   };
 
   const refreshMessages = async () => {
     if (!account) return;
-    
+
     try {
-      setLoading(true);
+      setRefreshing(true);
       const fetchedMessages = await getMessages(account.token);
       setMessages(fetchedMessages);
-      setLoading(false);
-    } catch (err) {
+      setError(null);
+    } catch {
       setError('Failed to fetch messages');
-      setLoading(false);
+    } finally {
+      setRefreshing(false);
     }
   };
 
@@ -102,8 +176,9 @@ export const MailProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setLoading(true);
       const details = await getMessageDetails(account.token, messageId);
       setSelectedMessage(details);
+      setError(null);
       setLoading(false);
-    } catch (err) {
+    } catch {
       setError('Failed to fetch message details');
       setLoading(false);
     }
@@ -115,25 +190,44 @@ export const MailProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       setLoading(true);
       await deleteMessage(account.token, messageId);
-      setMessages(messages.filter(msg => msg.id !== messageId));
+      setMessages(prev => prev.filter(msg => msg.id !== messageId));
       if (selectedMessage?.id === messageId) {
         setSelectedMessage(null);
       }
+      setError(null);
       setLoading(false);
-    } catch (err) {
+    } catch {
       setError('Failed to delete message');
+      setLoading(false);
+    }
+  };
+
+  const logout = () => {
+    saveSession(null);
+    setAccount(null);
+    setMessages([]);
+    setSelectedMessage(null);
+    setError(null);
+  };
+
+  const deleteCurrentAccount = async () => {
+    if (!account) return;
+
+    try {
+      setLoading(true);
+      await deleteAccount(account.token, account.id);
+      logout();
+    } catch {
+      setError('Failed to delete account');
+    } finally {
       setLoading(false);
     }
   };
 
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text)
-      .then(() => {
-        // Could add a toast notification here
-      })
-      .catch(err => {
-        setError('Failed to copy to clipboard');
-      });
+      .then(() => showToast('Copied to clipboard'))
+      .catch(() => showToast('Failed to copy to clipboard', 'error'));
   };
 
   const generateRandomUsername = () => {
@@ -155,16 +249,20 @@ export const MailProvider: React.FC<{ children: React.ReactNode }> = ({ children
         selectedMessage,
         domains,
         loading,
+        refreshing,
         error,
         createNewAccount,
         refreshMessages,
         selectMessage,
         removeMessage,
+        logout,
+        deleteCurrentAccount,
         copyToClipboard,
         generateRandomUsername,
       }}
     >
       {children}
+      <Toast toast={toast} onDismiss={dismissToast} />
     </MailContext.Provider>
   );
 };

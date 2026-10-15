@@ -115,7 +115,7 @@ export const WavyBackground = ({
       </svg>
       <div className={cn("relative z-10", className)}>{children}</div>
 
-      <style jsx="true">{`
+      <style>{`
         @keyframes wave {
           0% {
             transform: translateX(0);

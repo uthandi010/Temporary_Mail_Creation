@@ -23,7 +23,7 @@ const AppContent: React.FC = () => {
             </div>
             
             <div className="text-xs sm:text-sm text-gray-400 hidden xs:block">
-              Secure Email
+              Temporary Email
             </div>
           </div>
         </header>
@@ -34,8 +34,8 @@ const AppContent: React.FC = () => {
         
         <footer className="py-4 sm:py-6 px-3 sm:px-6 lg:px-8 border-t border-zinc-800/50 mt-8 sm:mt-12">
           <div className="max-w-7xl mx-auto text-center text-xs sm:text-sm text-gray-500">
-            <p>TempMail © {new Date().getFullYear()} - Powered by mail.tm</p>
-            <p className="mt-1">Emails deleted after 24h of inactivity</p>
+            <p>QuickThrowMail © {new Date().getFullYear()} - Powered by mail.tm</p>
+            <p className="mt-1">Mailboxes are temporary; retention is controlled by mail.tm and not guaranteed</p>
           </div>
         </footer>
       </div>

@@ -5,7 +5,6 @@ const API_URL = 'https://api.mail.tm';
 export interface Account {
   id: string;
   address: string;
-  password: string;
   token: string;
 }
 
@@ -62,7 +61,6 @@ export const createAccount = async (address: string, password: string): Promise<
     return {
       id: response.data.id,
       address: response.data.address,
-      password,
       token: tokenResponse.data.token,
     };
   } catch (error) {

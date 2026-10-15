@@ -3,14 +3,14 @@ import { useMail } from '../context/MailContext';
 import { TextGenerateEffect } from './ui/aceternity/text-generate-effect';
 import { BackgroundGradient } from './ui/aceternity/background-gradient';
 import { SparklesCore } from './ui/aceternity/sparkles';
-import { RefreshCw, Copy, Shuffle } from 'lucide-react';
+import { RefreshCw, Shuffle } from 'lucide-react';
 
 const CreateAccount: React.FC = () => {
-  const { domains, createNewAccount, loading, error, copyToClipboard, generateRandomUsername } = useMail();
+  const { domains, createNewAccount, loading, error, generateRandomUsername } = useMail();
   
   const [username, setUsername] = useState<string>(generateRandomUsername());
   const [selectedDomain, setSelectedDomain] = useState<string>('');
-  const [password, setPassword] = useState<string>('password123');
+  const [password, setPassword] = useState<string>('');
 
   const handleCreateAccount = (e: React.FormEvent) => {
     e.preventDefault();
@@ -140,7 +140,7 @@ const CreateAccount: React.FC = () => {
       </BackgroundGradient>
       
       <div className="mt-6 sm:mt-8 text-center text-gray-400 text-xs sm:text-sm px-4">
-        <p>Your temporary email will be automatically deleted after 24 hours of inactivity.</p>
+        <p>Mailboxes are temporary and provided by mail.tm. How long they are kept is not guaranteed, so do not rely on them for anything important.</p>
       </div>
     </div>
   );

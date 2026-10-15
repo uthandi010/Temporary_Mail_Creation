@@ -1,24 +1,30 @@
 import React, { useState } from 'react';
 import { useMail } from '../context/MailContext';
 import { WavyBackground } from './ui/aceternity/wavy-background';
-import { HoverEffect, Card, CardTitle, CardDescription } from './ui/aceternity/card-hover-effect';
-import { RefreshCw, Copy, Trash2, LogOut, Mail, Clock, AlertCircle, ChevronLeft } from 'lucide-react';
+import { HoverEffect } from './ui/aceternity/card-hover-effect';
+import { RefreshCw, Copy, Trash2, LogOut, UserX, Mail, Clock, AlertCircle, ChevronLeft } from 'lucide-react';
 import { formatDistanceToNow } from '../utils/dateUtils';
 import { BackgroundGradient } from './ui/aceternity/background-gradient';
+import MessageBody from './MessageBody';
+import ConfirmDialog from './ConfirmDialog';
 
 const EmailClient: React.FC = () => {
   const { 
     account, 
     messages, 
     selectedMessage, 
-    loading, 
+    loading,
+    refreshing,
     refreshMessages, 
     selectMessage, 
     removeMessage,
+    logout,
+    deleteCurrentAccount,
     copyToClipboard 
   } = useMail();
 
   const [showMobileMessageView, setShowMobileMessageView] = useState(false);
+  const [confirming, setConfirming] = useState<'logout' | 'delete' | null>(null);
 
   const handleCopyEmail = () => {
     if (account) {
@@ -30,9 +36,13 @@ const EmailClient: React.FC = () => {
     refreshMessages();
   };
 
-  const handleLogout = () => {
-    localStorage.removeItem('tempMailAccount');
-    window.location.reload();
+  const handleConfirm = async () => {
+    if (confirming === 'logout') {
+      logout();
+    } else if (confirming === 'delete') {
+      await deleteCurrentAccount();
+    }
+    setConfirming(null);
   };
 
   const handleSelectMessage = (messageId: string) => {
@@ -80,21 +90,30 @@ const EmailClient: React.FC = () => {
             <div className="flex items-center gap-2 mt-2 sm:mt-0">
               <button
                 onClick={handleRefresh}
-                disabled={loading}
+                disabled={refreshing}
                 className="bg-zinc-800 hover:bg-zinc-700 text-white p-1.5 sm:p-2 rounded-lg transition-colors"
                 title="Refresh inbox"
               >
-                <RefreshCw size={16} className={`sm:hidden ${loading ? 'animate-spin' : ''}`} />
-                <RefreshCw size={18} className={`hidden sm:block ${loading ? 'animate-spin' : ''}`} />
+                <RefreshCw size={16} className={`sm:hidden ${refreshing ? 'animate-spin' : ''}`} />
+                <RefreshCw size={18} className={`hidden sm:block ${refreshing ? 'animate-spin' : ''}`} />
               </button>
               
               <button
-                onClick={handleLogout}
+                onClick={() => setConfirming('logout')}
                 className="bg-zinc-800 hover:bg-zinc-700 text-white p-1.5 sm:p-2 rounded-lg transition-colors"
                 title="Logout"
               >
                 <LogOut size={16} className="sm:hidden" />
                 <LogOut size={18} className="hidden sm:block" />
+              </button>
+
+              <button
+                onClick={() => setConfirming('delete')}
+                className="bg-zinc-800 hover:bg-red-900/60 text-white p-1.5 sm:p-2 rounded-lg transition-colors"
+                title="Delete account"
+              >
+                <UserX size={16} className="sm:hidden" />
+                <UserX size={18} className="hidden sm:block" />
               </button>
             </div>
           </div>
@@ -192,10 +211,7 @@ const EmailClient: React.FC = () => {
               </div>
               
               <div className="flex-1 overflow-y-auto p-4 bg-white">
-                <div 
-                  className="prose max-w-none"
-                  dangerouslySetInnerHTML={{ __html: selectedMessage.html || selectedMessage.text }}
-                />
+                <MessageBody className="prose max-w-none" html={selectedMessage.html} text={selectedMessage.text} />
               </div>
             </div>
           ) : (
@@ -304,15 +320,27 @@ const EmailClient: React.FC = () => {
             </div>
             
             <div className="flex-1 overflow-y-auto p-3 bg-white">
-              <div 
-                className="prose max-w-none prose-sm"
-                dangerouslySetInnerHTML={{ __html: selectedMessage.html || selectedMessage.text }}
-              />
+              <MessageBody className="prose max-w-none prose-sm" html={selectedMessage.html} text={selectedMessage.text} />
             </div>
           </div>
         ) : null}
       </div>
       
+      {confirming && (
+        <ConfirmDialog
+          title={confirming === 'logout' ? 'Log out?' : 'Delete account?'}
+          message={
+            confirming === 'logout'
+              ? 'You will lose access to this inbox from this browser. The mailbox itself is not deleted.'
+              : 'This permanently deletes the mailbox and all its messages. This cannot be undone.'
+          }
+          confirmLabel={confirming === 'logout' ? 'Log out' : 'Delete account'}
+          busy={loading}
+          onConfirm={handleConfirm}
+          onCancel={() => setConfirming(null)}
+        />
+      )}
+
       <WavyBackground 
         className="mt-8 sm:mt-10 py-6 sm:py-10" 
         backgroundFill="#0f0f13"
