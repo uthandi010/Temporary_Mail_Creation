@@ -1,5 +1,6 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useCallback, useContext, useState, useEffect } from 'react';
 import axios from 'axios';
+import Toast, { ToastData } from '../components/Toast';
 import { Account, Message, MessageDetails, createAccount, deleteAccount, getMessages, getMessageDetails, deleteMessage, getDomains } from '../services/mailApi';
 
 interface MailContextType {
@@ -65,6 +66,17 @@ export const MailProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState<boolean>(false);
   const [refreshing, setRefreshing] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const [toast, setToast] = useState<ToastData | null>(null);
+
+  const showToast = useCallback((message: string, type: ToastData['type'] = 'success') => {
+    setToast({ id: Date.now(), message, type });
+  }, []);
+  const dismissToast = useCallback(() => setToast(null), []);
+
+  // Once signed in there is no inline error area, so surface errors as a toast.
+  useEffect(() => {
+    if (error && account) showToast(error, 'error');
+  }, [error, account, showToast]);
 
   // Fetch domains on initial render
   useEffect(() => {
@@ -214,12 +226,8 @@ export const MailProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text)
-      .then(() => {
-        // Could add a toast notification here
-      })
-      .catch(() => {
-        setError('Failed to copy to clipboard');
-      });
+      .then(() => showToast('Copied to clipboard'))
+      .catch(() => showToast('Failed to copy to clipboard', 'error'));
   };
 
   const generateRandomUsername = () => {
@@ -254,6 +262,7 @@ export const MailProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }}
     >
       {children}
+      <Toast toast={toast} onDismiss={dismissToast} />
     </MailContext.Provider>
   );
 };
