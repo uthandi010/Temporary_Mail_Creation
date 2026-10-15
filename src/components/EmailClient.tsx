@@ -5,6 +5,7 @@ import { HoverEffect, Card, CardTitle, CardDescription } from './ui/aceternity/c
 import { RefreshCw, Copy, Trash2, LogOut, Mail, Clock, AlertCircle, ChevronLeft } from 'lucide-react';
 import { formatDistanceToNow } from '../utils/dateUtils';
 import { BackgroundGradient } from './ui/aceternity/background-gradient';
+import MessageBody from './MessageBody';
 
 const EmailClient: React.FC = () => {
   const { 
@@ -192,10 +193,7 @@ const EmailClient: React.FC = () => {
               </div>
               
               <div className="flex-1 overflow-y-auto p-4 bg-white">
-                <div 
-                  className="prose max-w-none"
-                  dangerouslySetInnerHTML={{ __html: selectedMessage.html || selectedMessage.text }}
-                />
+                <MessageBody className="prose max-w-none" html={selectedMessage.html} text={selectedMessage.text} />
               </div>
             </div>
           ) : (
@@ -304,10 +302,7 @@ const EmailClient: React.FC = () => {
             </div>
             
             <div className="flex-1 overflow-y-auto p-3 bg-white">
-              <div 
-                className="prose max-w-none prose-sm"
-                dangerouslySetInnerHTML={{ __html: selectedMessage.html || selectedMessage.text }}
-              />
+              <MessageBody className="prose max-w-none prose-sm" html={selectedMessage.html} text={selectedMessage.text} />
             </div>
           </div>
         ) : null}
